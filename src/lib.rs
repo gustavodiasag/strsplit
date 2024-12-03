@@ -1,11 +1,13 @@
+use std::usize;
+
 #[derive(Debug, PartialEq)]
-pub struct StrSplit<'a, 'b> {
+pub struct StrSplit<'a, D> {
     remainder: Option<&'a str>,
-    delimiter: &'b str,
+    delimiter: D,
 }
 
-impl<'a, 'b> StrSplit<'a, 'b> {
-    pub fn new(haystack: &'a str, needle: &'b str) -> Self {
+impl<'a, D> StrSplit<'a, D> {
+    pub fn new(haystack: &'a str, needle: D) -> Self {
         Self {
             remainder: Some(haystack),
             delimiter: needle,
@@ -13,14 +15,21 @@ impl<'a, 'b> StrSplit<'a, 'b> {
     }
 }
 
-impl<'a, 'b> Iterator for StrSplit<'a, 'b> {
+pub trait Delimiter {
+    fn find_next(&self, s: &str) -> Option<(usize, usize)>;
+}
+
+impl<'a, D> Iterator for StrSplit<'a, D>
+where
+    D: Delimiter,
+{
     type Item = &'a str;
     fn next(&mut self) -> Option<Self::Item> {
         // Does not move remainder.
         if let Some(ref mut remainder) = self.remainder {
-            if let Some(next_delim) = remainder.find(self.delimiter) {
-                let until_delim = &remainder[..next_delim];
-                *remainder = &remainder[(next_delim + self.delimiter.len())..];
+            if let Some((delim_start, delim_end)) = self.delimiter.find_next(remainder) {
+                let until_delim = &remainder[..delim_start];
+                *remainder = &remainder[delim_end..];
                 Some(until_delim)
             } else {
                 self.remainder.take()
@@ -31,8 +40,22 @@ impl<'a, 'b> Iterator for StrSplit<'a, 'b> {
     }
 }
 
+impl Delimiter for &str {
+    fn find_next(&self, s: &str) -> Option<(usize, usize)> {
+        s.find(self).map(|start| (start, start + self.len()))
+    }
+}
+
+impl Delimiter for char {
+    fn find_next(&self, s: &str) -> Option<(usize, usize)> {
+        s.char_indices()
+            .find(|(_, c)| c == self)
+            .map(|(start, _)| (start, start + 1))
+    }
+}
+
 fn until_char(s: &str, c: char) -> &str {
-    StrSplit::new(s, &format!("{}", c))
+    StrSplit::new(s, c)
         .next()
         .expect("Always returns at least one value")
 }
